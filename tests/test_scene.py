@@ -172,6 +172,18 @@ def test_file_references_modes() -> None:
     assert ("/obj/deps/spare", "note") not in refs
 
 
+def test_type_libraries() -> None:
+    scene = py_houdini.parse(MODELS / "houdini20.5.370" / "mime" / "hda.hip")
+    fallbacks = scene.fallback_libraries
+    # Each type from where it was loaded, then in a relative form
+    assert [t for t, _ in fallbacks] == ["Sop/filecache::2.0", "Sop/filecache::2.0"]
+    assert fallbacks[0][1].endswith("/houdini/otls/OPlibSop.hda")
+    assert fallbacks[1][1] == "otls/OPlibSop.hda"
+    # The scene's own library is in .OPlibraries, not in the fallbacks
+    assert scene.libraries[0].endswith("/otls/py_houdini_fixture.hda")
+    assert scene.preferred_libraries == []
+
+
 def test_asset_file_parms_come_from_the_scene() -> None:
     # The fixture asset is no built-in type: its definition in .OPdummydefs says
     scene = py_houdini.parse(MODELS / "houdini20.5.370" / "cpio" / "hda.hip")
@@ -194,6 +206,10 @@ def test_expand(tmp_path: Path) -> None:
         f"{tmp_path.as_posix()}/geo/shot.copying.bgeo"
     )
     assert scene.expand("$UNKNOWN/$OS") == "$UNKNOWN/$OS"
+    rop = scene.node("/out/rop_geo")
+    assert scene.expand("$HIP/geo/$OS.$F4.bgeo.sc", copy, rop) == (
+        f"{tmp_path.as_posix()}/geo/rop_geo.$F4.bgeo.sc"
+    )
 
 
 @pytest.mark.parametrize("path", SCENES, ids=scene_id)

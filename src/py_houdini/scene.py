@@ -268,13 +268,18 @@ class Scene:
                 ]
         return references
 
-    def expand(self, value: str, path: str | Path | None = None) -> str:
-        """`value` with the scene's variables replaced ($JOB, $HIP...), others kept ($F4, $OS).
+    def expand(
+        self, value: str, path: str | Path | None = None, node: Node | None = None
+    ) -> str:
+        """`value` with the scene's variables replaced ($JOB, $HIP...), others kept ($F4).
 
         `$HIP`, `$HIPFILE` and `$HIPNAME` come from `path` (default: the parsed
-        file's), as Houdini sets them when loading a file, not from the values saved in it.
+        file's), as Houdini sets them when loading a file, not from the values
+        saved in it. Given the node the value belongs to, `$OS` is its name.
         """
         variables = {variable.name: variable.value for variable in self.variables}
+        if node is not None:
+            variables["OS"] = node.name
         path = Path(path) if path is not None else self.path
         if path is not None:
             absolute = Path(os.path.abspath(str(path)))
@@ -332,6 +337,31 @@ class Scene:
             token.raw.decode("utf-8", "surrogateescape")
             for token in sections.parse_lines(section.data)
         ]
+
+    @property
+    def fallback_libraries(self) -> list[tuple[str, str]]:
+        """(type, library) of the asset types the scene uses from libraries it does
+        not install (`.OPfallbacks`: each with the path it was loaded from, then a
+        relative `otls/...` form)."""
+        return self._type_libraries(".OPfallbacks")
+
+    @property
+    def preferred_libraries(self) -> list[tuple[str, str]]:
+        """(type, library) the scene prefers a type's definition from (`.OPpreferences`)."""
+        return self._type_libraries(".OPpreferences")
+
+    def _type_libraries(self, name: str) -> list[tuple[str, str]]:
+        section = self._sections.get(name)
+        pairs = []
+        for token in sections.parse_lines(section.data) if section else []:
+            # "<Category>/<type> <path>": a path may hold spaces, a type cannot
+            type_key, _, library = token.raw.decode(
+                "utf-8", "surrogateescape"
+            ).partition(" ")
+            if not library:
+                raise FormatError(f"unexpected {name} line: {token.raw!r}")
+            pairs.append((type_key, library))
+        return pairs
 
     def to_bytes(self) -> bytes:
         return self.container.to_bytes()
