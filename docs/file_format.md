@@ -159,6 +159,9 @@ value (measured).
   from libraries it does not install: each with the path Houdini loaded it from
   (`$HFS` as an 8.3 short path under hython), then a relative `otls/...` form.
   A type from a library in `.OPlibraries` is not listed (measured).
+- `.OPpreferences`: `<category>/<type> <path>` pairs: the library the scene
+  prefers a type's definition from (observed: `Sop/auto_tags //.../auto_tags.hda`,
+  `Sop/box $HOUDINI_USER_PREF_DIR/otls/OPcustom.hda`).
 - `.OPdummydefs`: an asset library (`INDX`, the `.hda` layout) holding the
   definitions of the non-built-in types the scene uses, from both kinds of
   library (measured).
