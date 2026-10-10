@@ -17,6 +17,12 @@ in `Binary` mode cpio, and loading either sets the mode back.
   friendly to version control", commercial licence only, Houdini 16 and later);
 - `hou.saveMode.Binary`: an old portable ASCII cpio archive ("odc").
 
+The mode belongs to the scene (measured): a new scene in hython is `Binary`,
+loading a file sets the mode of its container, so re-saving a loaded scene
+keeps its container. `hou.hipFile.saveAndBackup()` copies the previous file
+as it is (a MIME file stays MIME in `backup/` even after switching the scene
+to `Binary`), `saveAsBackup()` writes in the current mode.
+
 The same scene saved both ways has the same sections in the same order, with
 the same bytes except: `.variables` (`HIP`, `HIPFILE`), `.def` (modification
 time), `.userdata` (text in MIME, binary in cpio) and base64 encoding in MIME
