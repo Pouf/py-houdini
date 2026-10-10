@@ -14,8 +14,10 @@ import re
 # One token: a quoted string, or a run of characters other than space, tab
 # and newline (CR and other control characters are written raw); `\` escapes
 # the next character in both
+# Unrolled loops: a per-character alternation is 100 times slower on the
+# megabytes-long tokens of some production parameters
 QUOTED = rb'"[^"\\]*(?:\\.[^"\\]*)*"'
-UNQUOTED = rb'(?:[^ \t\n"\\]|\\.)+'
+UNQUOTED = rb'[^ \t\n"\\]+(?:\\.[^ \t\n"\\]*)*|(?:\\.[^ \t\n"\\]*)+'
 TOKEN = re.compile(QUOTED + rb"|" + UNQUOTED, re.DOTALL)
 ESCAPE = re.compile(r"\\(.)", re.DOTALL)
 NEEDS_QUOTES = re.compile(r"[ \t\n]|\A\Z")
