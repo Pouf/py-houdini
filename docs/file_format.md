@@ -143,7 +143,13 @@ Observed on production files, in file order:
 `set -g NAME = 'value'` lines, sorted: `E`, `EYE`, `HIP`, `HIPFILE`,
 `HIPNAME`, `JOB`, `PI`, `POSE`, `_HIP_SAVEPLATFORM`, `_HIP_SAVETIME`,
 `_HIP_SAVEVERSION`, `_HIP_SHELFTOOLCOUNT`, `status`, plus the scene's own
-(measured). `ACTIVETAKE` is set when loading but not saved (measured).
+(measured). `ACTIVETAKE` is set when loading; it is saved only by scenes that
+have takes besides `Main` (measured).
+Values are always in single quotes; only `'` is escaped (`\'`), backslashes,
+newlines and CR are written as is, so a lone backslash is written `'\'`
+(measured). Reading them back, Houdini resolves backslash escapes (`a\b`
+becomes `a` + backspace, `\\server` becomes `\server`) and a newline ends the
+value (measured).
 
 ### Asset libraries
 - `.OPlibraries`: one path per line, the libraries the scene installs.
@@ -176,6 +182,25 @@ component of the tuple. The bracket may hold more flags (`autoscope=1`,
 
 The leading `0` in the bracket is not an animation count: animated parameters
 also have `0` (measured).
+
+Quoting of string values, measured with one spare parameter (and one Python
+expression) per character on Houdini 20.5.370, the same in `.chn` expressions:
+- components are separated by tabs; a value is quoted (`"..."`) only when it
+  is empty or contains a space, tab or newline (newlines are written as is);
+- `\` and `"` are always escaped (`\\`, `\"`), quoted or not; nothing else is:
+  `()[]{};#,=<&|'`, `` ` ``, `$`, `*`, non-ASCII (UTF-8), CR and other control
+  characters are written raw, so an unquoted `[` component is followed by a
+  tab, while an animated one is `[ <channel><TAB><value> ] ` (a space after `[`);
+- menu and toggle values are quoted even when they need not be (`"read"`,
+  `"on"`), plain strings are not (`xform`).
+
+Houdini 20.5 does not read back all it writes (measured): a parameter value
+is cut at a CR, a value made of one escape (`\\` or `\"`) or of `)` alone
+reads as empty (`)` is taken as the end of the tuple), and an expression
+holding a CR loses that channel and every later one of the node.
+
+Node names accept letters, digits, `_`, `.` and `-` (a leading digit too);
+Houdini refuses spaces, `:`, `$` and non-ASCII letters (measured).
 
 ### `.chn`
 `channel <name> { ... segment { ... expr = <expression> ... } }`. Expressions
