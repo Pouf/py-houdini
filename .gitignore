@@ -39,4 +39,5 @@ tmp_*
 
 # Production paths and census outputs: never committed
 research/*.json
+research/*.jsonl
 research/*.txt
