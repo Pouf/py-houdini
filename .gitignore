@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Unit test / coverage reports
+htmlcov/
+.coverage
+.coverage.*
+.cache
+coverage.xml
+
+# Environments
+.env
+.venv
+
+# tools
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.vscode
+.idea/
+
+# Agent notes (untracked, like py-maya)
+.claude
+CLAUDE.md
+PLAN.md
+memory/
+.codegraph/
+
+# Local scratch and generated data
+samples/unused/
+scratch_*
+tmp_*
+
+# Production paths and census outputs: never committed
+research/*.json
+research/*.txt

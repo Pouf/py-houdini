@@ -1,0 +1,4 @@
+# Houdini writes .hip with LF line endings; byte-identical round-trip forbids any conversion.
+*.hip -text
+*.hda binary
+samples/models/** filter=lfs diff=lfs merge=lfs -text
