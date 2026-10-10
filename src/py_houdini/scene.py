@@ -10,16 +10,30 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
-from . import sections
+from . import hda, sections
 from .container import Container, FormatError, Section
+from .data.node_types import CHILD_CATEGORIES as CHILD_CATEGORIES_BY_KEY
+from .data.node_types import FILE_PARMS, MANAGERS
 from .hscript import encode, encode_variable
 
 if TYPE_CHECKING:
     from .sections import Channel, ParmTuple, Variable
+
+# By (category, type name as .init sections write it)
+BUILTIN_FILE_PARMS = {
+    hda.split_type_key(key): parms for key, parms in FILE_PARMS.items()
+}
+CHILD_CATEGORIES = {
+    hda.split_type_key(key): category
+    for key, category in CHILD_CATEGORIES_BY_KEY.items()
+}
+# $NAME or ${NAME}
+VARIABLE = re.compile(r"\$\{(\w+)\}|\$(\w+)")
 
 
 class Node:
@@ -121,12 +135,72 @@ class Node:
                     if number == int(name):
                         return path, subnet_output
                 return None, output
-            dot = self.scene._sections[f"{network}/{name}.networkdotinit"]
+            dot = self.scene._sections.get(f"{network}/{name}.networkdotinit")
+            if dot is None:
+                # Part of a locked asset's contents, which the file does not hold
+                return None, output
             fields = json.loads(dot.data)["input"].split()
             if not fields:
                 return None, output
             source, output = fields[0], int(fields[1])
         return f"/{network}/{source}", output
+
+    @property
+    def category(self) -> str | None:
+        """The category of the node's type (Sop, Object...), as its network's type
+        sets it; None when the file does not tell (a network of an unknown asset type)."""
+        stem = self.prefix.rpartition("/")[0]
+        if not stem:
+            return "Manager"
+        if "/" not in stem:
+            return MANAGERS.get(stem)
+        parent = self.parent
+        if parent is None or parent.type is None or parent.category is None:
+            return None
+        return CHILD_CATEGORIES.get((parent.category, parent.type))
+
+    @property
+    def file_parms(self) -> dict[str, tuple[str, str]]:
+        """The node's parameter tuples that name a file, as Houdini types them:
+        name > (file type, file chooser mode: "read", "write", "read_and_write" or "")."""
+        category = self.category
+        # The top-level networks' sections have no type: they go by name
+        type_name = self.name if category == "Manager" else self.type
+        templates = self.scene._type_file_parms(category, type_name)
+        spare = self.section("spareparmdef")
+        if spare is not None:
+            templates = {**templates, **hda.file_parms(spare.data)}
+        if not templates:
+            return {}
+        instances = [
+            (re.compile(re.escape(name).replace(r"\#", r"\d+")), info)
+            for name, info in templates.items()
+            if "#" in name
+        ]
+        found = {}
+        for parm in self.parms:
+            info = templates.get(parm.name)
+            if info is None:
+                # A multiparm instance: "layer2" of "layer#"
+                info = next((i for p, i in instances if p.fullmatch(parm.name)), None)
+            if info is not None:
+                found[parm.name] = info
+        return found
+
+
+class FileReference(NamedTuple):
+    """A file parameter component, its value as stored (unexpanded)."""
+
+    node: Node
+    parm: str
+    # Index of the component in the tuple
+    component: int
+    value: str
+    file_type: str
+    # The file chooser's mode: "read", "write", "read_and_write" or ""
+    mode: str
+    # The value comes from an expression in the node's channels
+    animated: bool
 
 
 class Scene:
@@ -142,6 +216,77 @@ class Scene:
                 node = Node(self, prefix)
                 self._nodes[node.path] = node
                 self._children.setdefault(prefix.rpartition("/")[0], []).append(node)
+        self._file_parms: dict[tuple[str | None, str], dict[str, tuple[str, str]]] = {}
+        self._definitions: dict[tuple[str, str], bytes] | None = None
+
+    def _type_file_parms(
+        self, category: str | None, type_name: str | None
+    ) -> dict[str, tuple[str, str]]:
+        """A node type's file parameters: Houdini's own types', and the scene's
+        asset definitions (they win: the scene's version of the asset); any
+        category when it is unknown. A definition does not type the parameters
+        its asset inherits (an object's `pickscript`): only Houdini's types do."""
+        if type_name is None:
+            return {}
+        key = (category, type_name)
+        if key not in self._file_parms:
+            if self._definitions is None:
+                section = self._sections.get(".OPdummydefs")
+                self._definitions = hda.definitions(section.data) if section else {}
+            found: dict[str, tuple[str, str]] = {}
+            for (cat, name), parms in BUILTIN_FILE_PARMS.items():
+                if name == type_name and category in (None, cat):
+                    found.update(parms)
+            for (cat, name), script in self._definitions.items():
+                if name == type_name and category in (None, cat):
+                    found.update(hda.file_parms(script))
+            self._file_parms[key] = found
+        return self._file_parms[key]
+
+    def file_references(self) -> list[FileReference]:
+        """Every component of every file parameter, empty or not, inputs and outputs."""
+        references = []
+        for node in self.nodes:
+            file_parms = node.file_parms
+            if not file_parms:
+                continue
+            for parm in node.parms:
+                if parm.name not in file_parms:
+                    continue
+                file_type, mode = file_parms[parm.name]
+                references += [
+                    FileReference(
+                        node,
+                        parm.name,
+                        index,
+                        component.value,
+                        file_type,
+                        mode,
+                        component.channel is not None,
+                    )
+                    for index, component in enumerate(parm.components)
+                ]
+        return references
+
+    def expand(self, value: str, path: str | Path | None = None) -> str:
+        """`value` with the scene's variables replaced ($JOB, $HIP...), others kept ($F4, $OS).
+
+        `$HIP`, `$HIPFILE` and `$HIPNAME` come from `path` (default: the parsed
+        file's), as Houdini sets them when loading a file, not from the values saved in it.
+        """
+        variables = {variable.name: variable.value for variable in self.variables}
+        path = Path(path) if path is not None else self.path
+        if path is not None:
+            absolute = Path(os.path.abspath(str(path)))
+            variables["HIP"] = absolute.parent.as_posix()
+            variables["HIPFILE"] = absolute.as_posix()
+            variables["HIPNAME"] = absolute.stem
+        return VARIABLE.sub(
+            lambda match: variables.get(
+                match.group(1) or match.group(2), match.group()
+            ),
+            value,
+        )
 
     @property
     def kind(self) -> str:
@@ -161,12 +306,14 @@ class Scene:
     @property
     def variables(self) -> list[Variable]:
         """The `set -g` variables saved with the scene."""
-        return sections.parse_variables(self._sections[".variables"].data)
+        # Near-empty production scenes have no .variables section
+        section = self._sections.get(".variables")
+        return sections.parse_variables(section.data) if section else []
 
     def set_variable(self, name: str, value: str) -> None:
-        section = self._sections[".variables"]
-        for variable in sections.parse_variables(section.data):
+        for variable in self.variables:
             if variable.name == name:
+                section = self._sections[".variables"]
                 token = variable.token
                 new = encode_variable(value)
                 section.data = sections.splice(

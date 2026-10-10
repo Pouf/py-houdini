@@ -63,8 +63,9 @@ def node_entry(node):
             parm_tuple.name(): parm_tuple.parmTemplate().type().name()
             for parm_tuple in node.parmTuples()
         },
+        # By tuple, as .parm sections store them
         "file_parms": sorted(
-            parm.name() for parm in node.parms() if is_file_parm(parm)
+            {parm.tuple().name() for parm in node.parms() if is_file_parm(parm)}
         ),
         # A subnet input wired to nothing outside has no input node
         "inputs": [

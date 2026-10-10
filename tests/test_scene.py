@@ -126,6 +126,77 @@ def test_inputs(path: Path) -> None:
 
 
 @pytest.mark.parametrize("path", SCENES, ids=scene_id)
+def test_file_parms(path: Path) -> None:
+    scene, dump = load(path)
+    for entry in dump["nodes"]:
+        node = scene.node(entry["path"])
+        assert sorted(node.file_parms) == entry["file_parms"], node.path
+
+
+@pytest.mark.parametrize("path", SCENES, ids=scene_id)
+def test_file_references_cover_houdinis(path: Path) -> None:
+    # hou.fileReferences(): parameter component > value, expressions evaluated,
+    # Houdini's own default files left out; libraries have no parameter
+    scene, dump = load(path)
+    ours = {
+        (ref.node.path, ref.parm, ref.component): ref for ref in scene.file_references()
+    }
+    for parm_path, value in dump["file_references"]:
+        if not parm_path:
+            assert value in scene.libraries
+            continue
+        node_path, _, component = parm_path.rpartition("/")
+        matches = [
+            ref
+            for (path_, parm, _), ref in ours.items()
+            if path_ == node_path and component.startswith(parm)
+        ]
+        assert matches, parm_path
+        # Houdini evaluates expressions and backticks; we keep values as stored
+        if not any(ref.animated or "`" in ref.value for ref in matches):
+            assert value in [ref.value for ref in matches], parm_path
+
+
+def test_file_references_modes() -> None:
+    scene = py_houdini.parse(MODELS / "houdini20.5.370" / "mime" / "deps.hip")
+    refs = {(r.node.path, r.parm): r for r in scene.file_references()}
+    assert refs["/obj/deps/file_unc", "file"].mode == "read_and_write"
+    assert refs["/out/rop_geo", "sopoutput"].mode == "write"
+    assert refs["/obj/deps/abc_sop", "fileName"].value == "//server/proj/cache/anim.abc"
+    assert refs["/obj/deps/file_python_expr", "file"].animated
+    # Spare parameters come from the node's own definitions
+    assert (
+        refs["/obj/deps/spare", "cache_path"].value
+        == "//server/proj/cache/spare.$F4.bgeo.sc"
+    )
+    assert ("/obj/deps/spare", "note") not in refs
+
+
+def test_asset_file_parms_come_from_the_scene() -> None:
+    # The fixture asset is no built-in type: its definition in .OPdummydefs says
+    scene = py_houdini.parse(MODELS / "houdini20.5.370" / "cpio" / "hda.hip")
+    assert scene.node("/obj/assets/asset_custom").file_parms == {
+        "asset_file": ("Any", "")
+    }
+    assert scene.node("/obj/assets/filecache").file_parms["file"] == (
+        "Geometry",
+        "write",
+    )
+
+
+def test_expand(tmp_path: Path) -> None:
+    scene = py_houdini.parse(MODELS / "houdini20.5.370" / "mime" / "deps.hip")
+    assert scene.expand("$JOB/geo/a.$F4.bgeo.sc") == "//server/proj/geo/a.$F4.bgeo.sc"
+    assert scene.expand("${ASSET_ROOT}/x") == "C:/data/assets/x"
+    copy = tmp_path / "shot.copying.hip"
+    # $HIP is where the file is, not what it saved
+    assert scene.expand("$HIP/geo/$HIPNAME.bgeo", copy) == (
+        f"{tmp_path.as_posix()}/geo/shot.copying.bgeo"
+    )
+    assert scene.expand("$UNKNOWN/$OS") == "$UNKNOWN/$OS"
+
+
+@pytest.mark.parametrize("path", SCENES, ids=scene_id)
 def test_variables_and_libraries(path: Path) -> None:
     scene, dump = load(path)
     variables = {variable.name: variable.value for variable in scene.variables}
