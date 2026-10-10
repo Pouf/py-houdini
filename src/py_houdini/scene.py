@@ -15,13 +15,15 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from . import hda, sections
+from . import hda, replace, sections
 from .container import Container, FormatError, Section
 from .data.node_types import CHILD_CATEGORIES as CHILD_CATEGORIES_BY_KEY
 from .data.node_types import FILE_PARMS, MANAGERS
 from .hscript import encode, encode_variable
 
 if TYPE_CHECKING:
+    from typing import Callable
+
     from .sections import Channel, ParmTuple, Variable
 
 # By (category, type name as .init sections write it)
@@ -207,17 +209,21 @@ class Scene:
     def __init__(self, container: Container, path: Path | None = None) -> None:
         self.container = container
         self.path = path
-        self._sections = {section.name: section for section in container.sections}
+        self._index()
+        self._file_parms: dict[tuple[str | None, str], dict[str, tuple[str, str]]] = {}
+        self._definitions: dict[tuple[str, str], bytes] | None = None
+
+    def _index(self) -> None:
+        """Sections by name and nodes by path, again after renames."""
+        self._sections = {section.name: section for section in self.container.sections}
         self._nodes: dict[str, Node] = {}
         self._children: dict[str, list[Node]] = {}
-        for section in container.sections:
+        for section in self.container.sections:
             prefix, _, suffix = section.name.rpartition(".")
             if suffix == "def" and prefix and not prefix.startswith("."):
                 node = Node(self, prefix)
                 self._nodes[node.path] = node
                 self._children.setdefault(prefix.rpartition("/")[0], []).append(node)
-        self._file_parms: dict[tuple[str | None, str], dict[str, tuple[str, str]]] = {}
-        self._definitions: dict[tuple[str, str], bytes] | None = None
 
     def _type_file_parms(
         self, category: str | None, type_name: str | None
@@ -362,6 +368,18 @@ class Scene:
                 raise FormatError(f"unexpected {name} line: {token.raw!r}")
             pairs.append((type_key, library))
         return pairs
+
+    def replace_strings(self, fn: Callable[[str], str]) -> bool:
+        """Put every name and string through `fn`, node names included, keeping
+        the scene consistent (what is reached: `py_houdini.replace`); return
+        whether anything changed. Nothing changes if a new node name is invalid
+        or clashes."""
+        return replace.replace_strings(self, fn)
+
+    def remap_paths(self, fn: Callable[[str], str | None]) -> bool:
+        """Put every file parameter value and asset library path through `fn`
+        (None keeps a path); return whether anything changed."""
+        return replace.remap_paths(self, fn)
 
     def to_bytes(self) -> bytes:
         return self.container.to_bytes()

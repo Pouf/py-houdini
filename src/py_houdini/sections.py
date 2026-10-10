@@ -29,6 +29,16 @@ VARIABLE = re.compile(rb"set -g (\S+) = ('.*?')\n(?=set -g |\Z)", re.DOTALL)
 NODE_TYPE = re.compile(rb"type = (\S+)\n")
 INPUTS = re.compile(rb"\ninputs\n\{\n((?:\d+ \t[^\n]*\n)*)\}\n")
 INPUT = re.compile(rb"(\d+) \t(\S+) (\d+) (\d+)\n")
+# Both blocks name the sources: "<input> \t<source> ..." lines. The newline
+# after "}" is left unmatched: it starts the next block's line.
+INPUT_BLOCKS = re.compile(
+    rb"\n(?:inputs|inputsNamed3)\n\{\n((?:\d+ \t[^\n]*\n)*)\}(?=\n)"
+)
+INPUT_SOURCE = re.compile(rb"\d+ \t(\S+) ")
+# A network dot's input: "<node> <output> <?>"
+DOT_INPUT = re.compile(rb'"input":"([^" ]+) ')
+TAKES_HEADER = b"HoudiniTakeFile 1.0\n"
+TAKE_LINE = re.compile(rb"take name (\S+) kids (\d+)\n")
 
 
 class Token(NamedTuple):
@@ -227,3 +237,86 @@ def parse_inputs(data: bytes) -> list[Input]:
         inputs.append(Input(int(line.group(1)), source, int(line.group(3))))
         position = line.end()
     return inputs
+
+
+def parse_input_sources(data: bytes) -> list[Token]:
+    """Every source a `.def` section names, in its `inputs` and `inputsNamed3`
+    blocks: a sibling node, a network dot "(name)" or the network's input "(0)"."""
+    sources = []
+    for block in INPUT_BLOCKS.finditer(data):
+        position = block.start(1)
+        while position < block.end(1):
+            match = INPUT_SOURCE.match(data, position)
+            if not match:
+                raise FormatError(
+                    f"unexpected .def input: {data[position : position + 200]!r}"
+                )
+            sources.append(Token(match.group(1), match.start(1), match.end(1)))
+            position = data.index(b"\n", position) + 1
+    return sources
+
+
+def parse_dot_input(data: bytes) -> Token | None:
+    """The node a network dot (`.networkdotinit` JSON) is wired from, if any."""
+    match = DOT_INPUT.search(data)
+    return Token(match.group(1), match.start(1), match.end(1)) if match else None
+
+
+class TakeItem(NamedTuple):
+    """A `.takes` line or record. kind "take": `text` is the take's name and
+    `extra` its child count; "node": `text` is a node path; "parms": `text` is
+    a `.parm` block and `extra` the record's first line; "other": the record."""
+
+    kind: str
+    text: bytes
+    extra: bytes = b""
+
+
+def _u32(value: int) -> bytes:
+    return value.to_bytes(4, "big")
+
+
+def parse_takes(data: bytes) -> list[TakeItem]:
+    """`HoudiniTakeFile 1.0`, then per take its "take name" line and records,
+    each a big-endian u32 length then text (docs/file_format.md)."""
+    if not data.startswith(TAKES_HEADER):
+        raise FormatError(f"unexpected .takes header: {data[:40]!r}")
+    items = []
+    position = len(TAKES_HEADER)
+    while position < len(data):
+        take = TAKE_LINE.match(data, position)
+        if take:
+            items.append(TakeItem("take", take.group(1), take.group(2)))
+            position = take.end()
+            continue
+        size = int.from_bytes(data[position : position + 4], "big")
+        record = data[position + 4 : position + 4 + size]
+        if len(record) != size:
+            raise FormatError(".takes record cut short")
+        position += 4 + size
+        if record.startswith(b"s 0 ") and record.endswith(b"\n"):
+            items.append(TakeItem("node", record[4:-1]))
+        elif record.startswith(b"d "):
+            head = record[: record.index(b"\n") + 1]
+            block = record[len(head) + 4 :]
+            if int.from_bytes(record[len(head) : len(head) + 4], "big") != len(block):
+                raise FormatError("unexpected .takes data record")
+            items.append(TakeItem("parms", block, head))
+        else:
+            items.append(TakeItem("other", record))
+    return items
+
+
+def encode_takes(items: list[TakeItem]) -> bytes:
+    chunks = [TAKES_HEADER]
+    for item in items:
+        if item.kind == "take":
+            chunks.append(b"take name %s kids %s\n" % (item.text, item.extra))
+        elif item.kind == "node":
+            chunks += [_u32(len(item.text) + 5), b"s 0 ", item.text, b"\n"]
+        elif item.kind == "parms":
+            record = item.extra + _u32(len(item.text)) + item.text
+            chunks += [_u32(len(record)), record]
+        else:
+            chunks += [_u32(len(item.text)), item.text]
+    return b"".join(chunks)
