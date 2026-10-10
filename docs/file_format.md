@@ -108,6 +108,18 @@ big-endian u64 (1 to 3), `.data` `\x7fNSJb` (probably Houdini binary JSON), `.us
   parameter). Production files hold only the empty `Main` take (every `.takes`
   is 48 bytes or less).
 
+## Nodes inside locked assets
+A locked asset's contents come from its definition and are not saved, except
+the nodes its definition declares editable: those are saved like any node
+(`obj/EXPORT/atk_blood/save.parm` inside a locked `ftc_export`), and the
+networks between them and the asset are not (observed). When the asset's
+library cannot be loaded, Houdini uses the definition saved in
+`.OPdummydefs`, which does not say which nodes are editable: it ignores their
+data ("Ignoring data for locked node") and saving the scene drops it
+(measured: a remap through hython lost 9 sections of one production scene and
+140 of another, all editable nodes of studio assets whose libraries were not
+reachable).
+
 ## Where paths and node names appear
 Census of a replace of each file's item name and share root over 360
 production files (`research/replace_census.py`): in `.variables` (`HIP`,
