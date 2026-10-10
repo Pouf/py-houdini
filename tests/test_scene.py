@@ -119,7 +119,10 @@ def test_inputs(path: Path) -> None:
     scene, dump = load(path)
     for entry in dump["nodes"]:
         node = scene.node(entry["path"])
-        assert [list(i) for i in node.inputs] == entry["inputs"], node.path
+        # The dump adds the kind of item wired (node, dot, subnet input)
+        assert [list(i) for i in node.inputs] == [i[:3] for i in entry["inputs"]], (
+            node.path
+        )
 
 
 @pytest.mark.parametrize("path", SCENES, ids=scene_id)

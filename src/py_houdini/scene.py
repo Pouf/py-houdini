@@ -41,8 +41,10 @@ class Node:
 
     @property
     def parent(self) -> Node | None:
+        """None for the top-level managers, and for nodes inside a locked asset
+        whose network the file does not hold (editable nodes of an asset)."""
         stem = self.prefix.rpartition("/")[0]
-        return self.scene.node("/" + stem) if stem else None
+        return self.scene._nodes.get("/" + stem) if stem else None
 
     @property
     def type(self) -> str | None:
@@ -93,23 +95,38 @@ class Node:
         return sections.parse_channels(section.data) if section else []
 
     @property
-    def inputs(self) -> list[tuple[int, str, int]]:
-        """Wired inputs: (input index, source node path, source output), through network dots."""
+    def inputs(self) -> list[tuple[int, str | None, int]]:
+        """Wired inputs: (input index, source node path, source output), as Houdini
+        reports them: through network dots, and through the subnet inputs to what
+        is wired outside (no path when nothing is)."""
         section = self.section("def")
-        if section is None or self.parent is None:
+        network = self.prefix.rpartition("/")[0]
+        if section is None or not network:
             return []
-        network = self.parent.prefix
-        inputs = []
-        for wire in sections.parse_inputs(section.data):
-            source = wire.source.raw.decode("ascii")
-            output = wire.output
-            while source.startswith("("):
-                # A network dot: follow it to the node it is wired to
-                dot = self.scene._sections[f"{network}/{source[1:-1]}.networkdotinit"]
-                fields = json.loads(dot.data)["input"].split()
-                source, output = fields[0], int(fields[1])
-            inputs.append((wire.number, f"/{network}/{source}", output))
-        return inputs
+        return [
+            (
+                wire.number,
+                *self._source(network, wire.source.raw.decode("ascii"), wire.output),
+            )
+            for wire in sections.parse_inputs(section.data)
+        ]
+
+    def _source(self, network: str, source: str, output: int) -> tuple[str | None, int]:
+        # "(name)" is a network dot, "(<digits>)" the network's own input
+        while source.startswith("("):
+            name = source[1:-1]
+            if name.isdigit():
+                subnet = self.scene._nodes.get("/" + network)
+                for number, path, subnet_output in subnet.inputs if subnet else []:
+                    if number == int(name):
+                        return path, subnet_output
+                return None, output
+            dot = self.scene._sections[f"{network}/{name}.networkdotinit"]
+            fields = json.loads(dot.data)["input"].split()
+            if not fields:
+                return None, output
+            source, output = fields[0], int(fields[1])
+        return f"/{network}/{source}", output
 
 
 class Scene:

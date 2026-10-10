@@ -66,8 +66,14 @@ def node_entry(node):
         "file_parms": sorted(
             parm.name() for parm in node.parms() if is_file_parm(parm)
         ),
+        # A subnet input wired to nothing outside has no input node
         "inputs": [
-            [c.inputIndex(), c.inputNode().path(), c.outputIndex()]
+            [
+                c.inputIndex(),
+                c.inputNode().path() if c.inputNode() else None,
+                c.outputIndex(),
+                type(c.inputItem()).__name__,
+            ]
             for c in node.inputConnections()
         ],
     }

@@ -15,15 +15,8 @@ from .container import FormatError
 from .hscript import QUOTED, TOKEN, UNQUOTED, decode, decode_variable
 
 PARM_TOKEN = QUOTED + rb"|" + UNQUOTED
-# name<TAB>[ flags ]<TAB>(<TAB>component<TAB>...)
-PARM_LINE = re.compile(
-    rb"([^\t\n]+)\t\[ ([^\]\n]*) \]\t\(\t((?:(?:\[ [^\t\n]+\t(?:"
-    + PARM_TOKEN
-    + rb") \] |(?:"
-    + PARM_TOKEN
-    + rb"))\t)*)\)\n",
-    re.DOTALL,
-)
+# name<TAB>[ flags ]<TAB>(<TAB>component<TAB>...)\n
+PARM_START = re.compile(rb"([^\t\n]+)\t\[ ([^\]\n]*) \]\t\(\t")
 # An animated component is "[ <channel><TAB><value> ] "
 COMPONENT = re.compile(
     rb"(?:\[ ([^\t\n]+)\t(" + PARM_TOKEN + rb") \] |(" + PARM_TOKEN + rb"))\t",
@@ -110,19 +103,26 @@ def parse_parms(data: bytes) -> list[ParmTuple]:
     tuples = []
     position = len(PARM_HEADER)
     while not data.startswith(b"}\n", position):
-        line = PARM_LINE.match(data, position)
+        line = PARM_START.match(data, position)
         if not line:
             raise FormatError(
                 f"unexpected .parm line: {data[position : position + 200]!r}"
             )
+        position = line.end()
         components = []
-        for component in COMPONENT.finditer(data, line.start(3), line.end(3)):
+        while not data.startswith(b")\n", position):
+            component = COMPONENT.match(data, position)
+            if not component:
+                raise FormatError(
+                    f"unexpected .parm value: {data[position : position + 200]!r}"
+                )
             if component.group(1) is not None:
                 token = Token(component.group(2), component.start(2), component.end(2))
                 components.append(Component(token, component.group(1).decode("ascii")))
             else:
                 token = Token(component.group(3), component.start(3), component.end(3))
                 components.append(Component(token, None))
+            position = component.end()
         tuples.append(
             ParmTuple(
                 line.group(1).decode("utf-8", "surrogateescape"),
@@ -130,7 +130,7 @@ def parse_parms(data: bytes) -> list[ParmTuple]:
                 components,
             )
         )
-        position = line.end()
+        position += 2
     if position + 2 != len(data):
         raise FormatError("unexpected bytes after the .parm block")
     return tuples

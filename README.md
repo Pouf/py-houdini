@@ -9,10 +9,15 @@ A `.hip` file is a list of named sections (scene settings, then a few sections p
 
 ## Status
 
-Pre-alpha: nothing usable yet. The plan, in order:
+Pre-alpha.
 
-* Byte-identical round-trip of both containers, refusing files that cannot be reproduced
-* Section codecs and a scene model (nodes, parameters, expressions, variables, asset libraries)
+### Supported
+* Both containers, byte for byte: parse then save gives the same bytes (all 18,152 production MIME and cpio files; the two others, one truncated and one converted to CRLF outside Houdini, are refused at parse time). Files of other formats named `.hip` (Apprentice, Alembic, Maya...) are refused with an error naming the format
+* Scene model: nodes (path, type, children in Houdini's order, wired inputs through network dots), parameter tuples (values decoded as Houdini reads them, animated components with their channel), channel expressions with their language, `set -g` variables, the asset libraries the scene installs; checked against Houdini's own view of every fixture
+* Editing a parameter value or a variable rewrites that token only, quoted and escaped the way Houdini writes it
+* Saving: `save(path)` refuses to overwrite, `save_in_place()` overwrites atomically
+
+### Planned
 * Listing file dependencies
 * Replacing strings across the scene (paths, variables, libraries, parameters, expressions, node names)
 
@@ -22,6 +27,20 @@ Apprentice files (`.hipnc`) are encrypted and out of scope.
 
 ```sh
 uv sync --extra dev
+```
+
+## Getting started
+
+```python
+import py_houdini
+
+scene = py_houdini.parse("shot.hip")
+for node in scene.nodes:
+    for parm in node.parms:
+        print(node.path, node.type, parm.name, [c.value for c in parm.components])
+
+scene.node("/obj/geo1/file1").set_parm("file", "$HIP/geo/rock.bgeo.sc")
+scene.save("shot_edited.hip")
 ```
 
 ## Documentation

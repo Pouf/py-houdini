@@ -228,10 +228,16 @@ def names():
     geo.setName("e101_s010_p020_cache")
     # A sibling that a p020 -> p030 replace would collide with
     obj.createNode("geo", "e101_s010_p030_cache")
-    inner = geo.createNode("subnet", "outer").createNode("subnet", "inner")
+    outer = geo.createNode("subnet", "outer")
+    inner = outer.createNode("subnet", "inner")
     file_sop(inner, "file1", "//server/proj/geo/e101_s010_p020_inner.bgeo.sc")
     top = file_sop(geo, "file1", "//server/proj/geo/e101_s010_p020_top.bgeo.sc")
     top.parm("file").setExpression('chs("/obj/ctrl/path")', hou.exprLanguage.Hscript)
+    # Subnet inputs seen from inside: one wired outside, one not
+    outer.setInput(0, top)
+    inside = outer.createNode("merge", "merge_inside")
+    inside.setInput(0, outer.indirectInputs()[0])
+    inside.setInput(1, outer.indirectInputs()[1])
     dot = geo.createNetworkDot()
     dot.setInput(top)
     xform = geo.createNode("xform", "xform_e101_s010_p020")
