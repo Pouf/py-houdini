@@ -38,7 +38,7 @@ def keyframes(parm):
 def parm_entry(parm):
     keys = keyframes(parm)
     if keys:
-        return {"raw": parm.rawValue(), "keyframes": keys}
+        return {"name": parm.name(), "raw": parm.rawValue(), "keyframes": keys}
     return parm.rawValue()
 
 
@@ -54,7 +54,15 @@ def node_entry(node):
     entry = {
         "path": node.path(),
         "type": node.type().nameWithCategory(),
-        "parms": {parm.name(): parm_entry(parm) for parm in node.parms()},
+        # By tuple, as .parm sections store them
+        "parms": {
+            parm_tuple.name(): [parm_entry(parm) for parm in parm_tuple]
+            for parm_tuple in node.parmTuples()
+        },
+        "parm_types": {
+            parm_tuple.name(): parm_tuple.parmTemplate().type().name()
+            for parm_tuple in node.parmTuples()
+        },
         "file_parms": sorted(
             parm.name() for parm in node.parms() if is_file_parm(parm)
         ),
@@ -71,7 +79,9 @@ def node_entry(node):
         entry["comment"] = node.comment()
     if node.userDataDict():
         entry["user_data"] = node.userDataDict()
-    if node.isNetwork():
+    # A locked asset's contents come from its definition, not from the file
+    if node.isNetwork() and not node.isLockedHDA():
+        entry["children"] = [child.name() for child in node.children()]
         notes = {n.name(): n.text() for n in node.stickyNotes()}
         boxes = {
             b.name(): {
@@ -120,11 +130,16 @@ def dump(path):
     if errors:
         raise RuntimeError(errors)
     names = re.findall(r"^set -g (\S+) = ", listing, re.MULTILINE)
+    # hscript-only variables (E, PI, status...) are not in hou.getenv: read the listing
+    listed = dict(re.findall(r"^set -g (\S+) = '([^'\n]*)'$", listing, re.MULTILINE))
     data = {
         "houdini": hou.applicationVersionString(),
         "save_mode": hou.hipFile.saveMode().name(),
         "load_warnings": warnings,
-        "variables": {name: hou.getenv(name) for name in names},
+        "variables": {
+            name: listed.get(name) if hou.getenv(name) is None else hou.getenv(name)
+            for name in names
+        },
         "libraries": sorted(set(hou.hda.loadedFiles()) - BASELINE_LIBRARIES),
         "session_module": hou.sessionModuleSource(),
         "nodes": [
