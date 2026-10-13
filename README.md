@@ -18,7 +18,7 @@ Pre-alpha.
 * File references (`scene.file_references()`): every file parameter as Houdini types it (built-in node types from a table generated from Houdini 20.5, asset types from their definitions saved in the scene, spare parameters), with its file chooser mode (read/write) and whether an expression drives it; the asset libraries the scene installs, uses and prefers; `scene.expand()` for the scene's variables, `$HIP` from where the file is
 * Replacing every name and string through a function (`scene.replace_strings(fn)`), like a text replace that keeps the scene consistent: parameter values, expressions, variables (but `$HIP`, `$HIPFILE`, `$HIPNAME`), library paths, takes, and node names with everything that names a node (paths, children order, inputs, network dots). Houdini's view of the result matches a hython remap on every fixture, takes aside (hython leaves their overrides behind). Nothing changes when a new node name is invalid or clashes
 * Remapping file paths only (`scene.remap_paths(fn)`)
-* Saving: `save(path)` refuses to overwrite, `save_in_place()` overwrites atomically
+* Saving atomically: `save(path)` refuses to overwrite, `save_in_place()` overwrites the parsed file
 
 Apprentice files (`.hipnc`) are encrypted and out of scope.
 
