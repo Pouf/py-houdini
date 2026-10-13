@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import tempfile
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -385,20 +385,28 @@ class Scene:
         return self.container.to_bytes()
 
     def save(self, path: str | Path) -> None:
-        """Write the scene to a new file; refuses to overwrite one."""
+        """Write the scene to a new file, atomically: a failed write leaves no
+        file. Refuses to overwrite one (`FileExistsError`)."""
         path = Path(path)
-        with path.open("xb") as f:
-            f.write(self.to_bytes())
+        if path.exists():
+            raise FileExistsError(f"refusing to overwrite {path}")
+        self._write(path)
 
     def save_in_place(self) -> None:
         """Overwrite the parsed file, atomically: a failed write leaves it as it was."""
         if self.path is None:
             raise ValueError("this scene was not parsed from a file")
-        handle, temporary = tempfile.mkstemp(dir=str(self.path.parent), suffix=".hip")
+        self._write(self.path)
+
+    def _write(self, target: Path) -> None:
+        data = self.to_bytes()
+        # Opened like any new file (not `mkstemp`, which makes it private to
+        # its owner on POSIX), under a unique name no user file carries.
+        temporary = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp")
         try:
-            with os.fdopen(handle, "wb") as f:
-                f.write(self.to_bytes())
-            os.replace(temporary, str(self.path))
+            with temporary.open("xb") as f:
+                f.write(data)
+            os.replace(temporary, target)
         finally:
-            if os.path.exists(temporary):
-                os.remove(temporary)
+            if temporary.exists():  # missing_ok needs Python 3.8
+                temporary.unlink()

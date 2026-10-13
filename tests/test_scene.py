@@ -272,3 +272,30 @@ def test_save_in_place(tmp_path: Path) -> None:
         "JOB"
     ] == "//elsewhere"
     assert [p.name for p in tmp_path.iterdir()] == ["names.hip"]
+
+
+def test_failed_write_leaves_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The temporary file is created, then writing it fails part-way (a full
+    # disk, a dropped network share): it is removed, the scene file untouched,
+    # and a new file is not left truncated.
+    source = (MODELS / "houdini20.5.370" / "mime" / "names.hip").read_bytes()
+    out = tmp_path / "names.hip"
+    out.write_bytes(source)
+    scene = py_houdini.parse(out)
+    real_open = Path.open
+
+    def open_then_fail(path: Path, *args: Any, **kwargs: Any) -> None:
+        with real_open(path, *args, **kwargs) as f:
+            f.write(b"partial")
+        raise OSError("simulated write failure")
+
+    monkeypatch.setattr(Path, "open", open_then_fail)
+    with pytest.raises(OSError):
+        scene.save_in_place()
+    with pytest.raises(OSError):
+        scene.save(tmp_path / "new.hip")
+    monkeypatch.undo()
+    assert out.read_bytes() == source
+    assert [p.name for p in tmp_path.iterdir()] == ["names.hip"]
