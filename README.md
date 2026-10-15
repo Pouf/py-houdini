@@ -1,7 +1,7 @@
 # py_houdini
 `py_houdini` is a Python package for reading and editing SideFX Houdini scene files (`.hip`) without Houdini.
 
-Sibling project of [py-maya](https://github.com/Pouf/py-maya).
+Sibling project of [py-maya-scene](https://github.com/Pouf/py-maya-scene).
 
 ## About
 

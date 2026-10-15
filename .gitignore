@@ -25,7 +25,7 @@ coverage.xml
 .vscode
 .idea/
 
-# Agent notes (untracked, like py-maya)
+# Agent notes (untracked, like py-maya-scene)
 .claude
 CLAUDE.md
 PLAN.md
