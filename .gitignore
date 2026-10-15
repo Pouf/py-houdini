@@ -37,7 +37,5 @@ samples/unused/
 scratch_*
 tmp_*
 
-# Production paths and census outputs: never committed
-research/*.json
-research/*.jsonl
-research/*.txt
+# Census scripts and outputs over the private production corpus: never committed
+research/

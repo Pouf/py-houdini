@@ -28,7 +28,7 @@ the same bytes except: `.variables` (`HIP`, `HIPFILE`), `.def` (modification
 time), `.userdata` (text in MIME, binary in cpio) and base64 encoding in MIME
 (measured).
 
-Production census (`research/hip_sweep.py`, every file read in full,
+Production census (every file read in full,
 2026-10-10): 18,214 files named `.hip*` (352 GB): 17,577 MIME (328 GB,
 Houdini 18.5.759 to 20.5.487, 99.7% 20.5.370), 577 cpio (19 GB, 18.5.759 to
 20.5.370), and 60 others: Apprentice files (`HouNC\x1a` header, encrypted,
@@ -122,7 +122,7 @@ reachable).
 
 ## Where paths and node names appear
 Census of a replace of each file's item name and share root over 360
-production files (`research/replace_census.py`): in `.variables` (`HIP`,
+production files: in `.variables` (`HIP`,
 `HIPFILE`, `HIPNAME` in every file, other variables), `.parm` values (plain and
 animated `[ channel value ]`), `.chn` expressions (including multi-line Python)
 and `defaultString`, section names (nodes named after the item), `.order`,
