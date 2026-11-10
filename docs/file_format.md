@@ -116,9 +116,9 @@ networks between them and the asset are not (observed). When the asset's
 library cannot be loaded, Houdini uses the definition saved in
 `.OPdummydefs`, which does not say which nodes are editable: it ignores their
 data ("Ignoring data for locked node") and saving the scene drops it
-(measured: a remap through hython lost 9 sections of one production scene and
-140 of another, all editable nodes of studio assets whose libraries were not
-reachable).
+(measured: a load and save through hython lost 9 sections of one production
+scene and 140 of another, all editable nodes of assets whose libraries were
+not reachable).
 
 ## Where paths and node names appear
 Census of a replace of each file's item name and share root over 360
