@@ -18,6 +18,9 @@ coverage.xml
 .env
 .venv
 
+# documentation
+/site
+
 # tools
 .mypy_cache/
 .pytest_cache/
