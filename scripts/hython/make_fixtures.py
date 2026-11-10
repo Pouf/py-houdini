@@ -1,6 +1,12 @@
 """Build the Houdini-made fixtures in samples/models/houdini<version>/.
 
-    "C:/Program Files/Side Effects Software/Houdini 20.5.370/bin/hython.exe" scripts/hython/make_fixtures.py [scene ...]
+    mklink /J C:\\py-houdini <this repository>
+    "C:/Program Files/Side Effects Software/Houdini 20.5.370/bin/hython.exe" C:/py-houdini/scripts/hython/make_fixtures.py [scene ...]
+
+Fixtures must not say who made them or where: run the script through a
+neutral path, which ends up in `$HIP` and `.OPlibraries`. Each saved file then
+gets neutral author stamps and home folder in `$JOB` and `$POSE`, and the run
+stops if the login, host or home folder is still in it.
 
 Builds the scenes named on the command line, all of them by default. Each
 scene is saved in both containers: `mime/<name>.hip` (`hou.saveMode.Text`)
@@ -14,11 +20,19 @@ replace tests have something to rename.
 """
 
 import os
+import re
+import socket
 import sys
 
 import hou
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "src"))
+from py_houdini import parse  # noqa: E402
+
+HOME = os.path.expanduser("~").replace("\\", "/")
+AUTHOR = re.compile(rb"\n  author \S+\n")
+IDENTITY = [os.getlogin(), socket.gethostname(), socket.getfqdn(), HOME]
 OUT = os.path.join(
     ROOT, "samples", "models", "houdini" + hou.applicationVersionString()
 )
@@ -52,7 +66,28 @@ def save(name):
         if not os.path.isdir(os.path.dirname(path)):
             os.makedirs(os.path.dirname(path))
         hou.hipFile.save(path, save_to_recent_files=False)
+        scrub(path)
         print("saved", path)
+
+
+def scrub(path):
+    """Take the author stamps and home folder out of a saved fixture."""
+    scene = parse(path)
+    for section in scene.container.sections:
+        if section.name.endswith((".def", ".netboxinit", ".postitdef")):
+            section.data = AUTHOR.sub(b"\n  author fixtures@houdini\n", section.data)
+    for variable in scene.variables:
+        # $HIP and $HIPFILE come from the path the script runs from
+        if variable.name not in ("HIP", "HIPFILE") and variable.value.startswith(HOME):
+            scene.set_variable(
+                variable.name, "C:/Users/fixtures" + variable.value[len(HOME) :]
+            )
+    scene.save_in_place()
+    with open(path, "rb") as f:
+        data = f.read().lower()
+    for text in IDENTITY:
+        if text.lower().encode() in data:
+            raise RuntimeError(f"{path} names {text}, run from a neutral path")
 
 
 def hscript(command):

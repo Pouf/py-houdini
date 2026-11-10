@@ -118,8 +118,8 @@ def test_replace_reaches_variables_libraries_expressions(tmp_path: Path) -> None
 
     hda = py_houdini.parse(MODELS / "cpio" / "hda.hip")
     assert hda.replace_strings(lambda value: value.replace("py-houdini", "elsewhere"))
-    assert hda.libraries[0].endswith(
-        "/git/elsewhere/samples/models/houdini20.5.370/otls/py_houdini_fixture.hda"
+    assert hda.libraries[0] == (
+        "C:/elsewhere/samples/models/houdini20.5.370/otls/py_houdini_fixture.hda"
     )
 
 
