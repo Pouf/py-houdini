@@ -39,6 +39,8 @@ VARIABLE = re.compile(r"\$\{(\w+)\}|\$(\w+)")
 
 
 class Node:
+    """A node of the scene, as its sections of the file describe it."""
+
     def __init__(self, scene: Scene, prefix: str) -> None:
         self.scene = scene
         # Path without the leading slash: the sections' name stem
@@ -206,6 +208,8 @@ class FileReference(NamedTuple):
 
 
 class Scene:
+    """A Houdini scene file (`.hip`), in either container."""
+
     def __init__(self, container: Container, path: Path | None = None) -> None:
         self.container = container
         self.path = path
